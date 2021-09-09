@@ -116,6 +116,56 @@ out:
     return retval;
 }
 
+ssize_t scull_write(struct file *filp, const __user *buf, size_t count, loff_t *f_pos) {
+    struct scull_dev *dev = filp->private_data;
+    struct scull_qset = *dptr;
+    int quantum = dev->quantum, qset = dev->qset;
+    int itemsize = quantum * qset;
+    int item, s_pos, q_pos, rest;
+    ssize_t retval = -ERESTARTSYS;
+
+    item = (long)*f_pos / itemsize;
+    rest = (long)*f_pos % itemsize;
+    s_pos = rest / quantum;
+    q_pos = rest % quantum;
+
+    dptr = scull_follow(dev, item);
+    
+    if(dptr == NULL) {
+        goto out;
+    }
+    
+    if(!dptr->data) {
+        dptr->data = kmalloc(qset * sizeof(char*), GFP_KERNEL);
+        if(!dptr->data) {
+            goto out;
+        }
+        memset(dptr->data, 0, qset * sizeof(char*));
+    }
+    if(!dptr->data[s_pos]) {
+        dptr->data[s_pos] = kmalloc(quantum * sizeof(char), GFP_KERNEL);
+        if(!dptr->data[s_pos]) {
+            goto out;
+        }
+    }
+    if(count > quantum - q_pos) {
+        count = quantum - q_pos;
+    }
+    if(copy_from_user(dptr->data[s_pos] + q_pos, buf, count)) {
+        retval = -EFAULT;
+        goto out;
+    }
+
+    *f_pos += count;
+    retval = count;
+    if(dev->size < *f_pos) {
+        dev->size = *f_pos;
+    }
+out:
+    mutex_unlock(&dev->lock);
+    return retval;
+}
+
 void scull_cleanup_module(void) {
     int i;
     dev_t devno = MKDEV(scull_major, scull_minor);
