@@ -1,31 +1,39 @@
 #include <linux/ioctl.h>
 #include <linux/cdev.h>
 
+#define SCULLC_MAJOR 0   /* dynamic major by default */
 
+#define SCULLC_DEVS 4    /* scullc0 through scullc3 */
 
-#define SCULLC_MAJOR 0
-#define SCULLC_DEVS 4
+#define SCULLC_QUANTUM  4000 /* use a quantum size like scull */
+#define SCULLC_QSET     500
 
-#define SCULLC_QUANTUM 4000
-#define SCULLC_QSET 500
-
-
-struct scull_dev {
-    void **data;
-    struct scull_dev *next;
-    int quantum;
-    int qset;
-    unsigned long size;
-    struct mutex lock;
-    struct cdev cdev;
+struct scullc_dev {
+	void **data;
+	struct scullc_dev *next;  /* next listitem */
+	int quantum;              /* the current allocation size */
+	int qset;                 /* the current array size */
+	size_t size;              /* 32-bit will suffice */
+	struct mutex lock;     /* Mutual exclusion */
+	struct cdev cdev;
 };
 
-extern struct scull_dev *scull_devices;
-extern struct file_operations scull_fops;
-extern int scull_major;
-extern int scull_devs;
-extern int scull_order;
-extern int scull_qset;
+extern struct scullc_dev *scullc_devices;
 
-int scull_trim(struct scull_dev *dev);
-struct scull_dev* scull_follow(struct scull_dev *dev, int n);
+extern struct file_operations scullc_fops;
+
+/*
+ * The different configurable parameters
+ */
+extern int scullc_major;     /* main.c */
+extern int scullc_devs;
+extern int scullc_order;
+extern int scullc_qset;
+
+/*
+ * Prototypes for shared functions
+ */
+int scullc_trim(struct scullc_dev *dev);
+struct scullc_dev *scullc_follow(struct scullc_dev *dev, int n);
+
+
