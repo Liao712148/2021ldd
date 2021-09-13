@@ -147,8 +147,9 @@ ssize_t scullc_write (struct file *filp, const char __user *buf, size_t count,
 	int item, s_pos, q_pos, rest;
 	ssize_t retval = -ENOMEM; /* our most likely error */
 
+    /*Lock the mutex like mutex_lock, and return 0 if the mutex has been acquired or sleep until the mutex becomes available. If a signal arrives while waiting for the lock then this function returns -EINTR.*/
 	if (mutex_lock_interruptible (&dev->lock))
-		return -ERESTARTSYS;
+		return -ERESTARTSYS; /*if condition get return value -EINTR*/
 
 	/* find listitem, qset index and offset in the quantum */
 	item = ((long) *f_pos) / itemsize;
@@ -185,6 +186,7 @@ ssize_t scullc_write (struct file *filp, const char __user *buf, size_t count,
 	return count;
 
   nomem:
+    /*if there are some problem when a process lock, it should be release lock first and then return the problem to user*/
 	mutex_unlock (&dev->lock);
 	return retval;
 }

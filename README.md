@@ -322,4 +322,50 @@ int main()
 ![](https://i.imgur.com/vM2sDQX.png)
 
 
+2021 LDD3 第5章
+===
+
+contribute by `Liao712148`
+[Liao712148](https://github.com/Liao712148/2021ldd)
+###### tags: `Linux Device Drivers`, `Linux `
+
+在持有lock時發生錯誤，==必須先釋放lock==，然後才將錯誤狀態碼傳回給使用者。
+
+### 在scull裡使用lock
+mutex的初始化，必須要發生在scull裝置可被系統其他部門取用之前。也就是mutex_init，必須要在scullc_setup_cdev之前。因為scullc_setup_cdev函式中會執行cdev_add()將字元裝置加入核心，也就是註冊字元裝置。當cdev_add()返回時，表示裝置已經生效了，核心隨時都有可能呼叫你的作業方法。
+```cpp=
+	for (i = 0; i < scullc_devs; i++) {
+		scullc_devices[i].quantum = scullc_quantum;
+		scullc_devices[i].qset = scullc_qset;
+		mutex_init (&scullc_devices[i].lock);
+		scullc_setup_cdev(scullc_devices + i, i);
+	}
+```
+
+### Reader/Writer semphore
+有時候只需要保護**讀取**或**改變**的動作即可。只要==共享資源的內容不被改變==，就可以被同時讀取。也就是說read-only的工作可以平行進行，而不必等待他readers離開critical section。
+
+rwsem(reader/writer semaphore)定義於<linux/rwsem.h>中
+down_read()可提供保護資源的read-only存取權，這類存取權沒有獨占性，可以同時授予多個不同的reader process，但是只要有任何一個proces仍然持有read-only存取權，就不會釋放任何write存取權。也就是說rwsem可容許一個writer或是多個readers同時擁有semaphore。==writer有優先權==（writer優先權高，所以只要有writer要semaphore，reader就強不到）當有任何writer試圖進入critical section，就沒有任何readers可獲准進入，直到所有writer都完成工作為止。因此reader可能會starvation。
+
+### 完工通知
+
+可能會使用semaphore來==同步==兩個工作，但是如果semaphore的佔用時間過常，或是搶semaphore的狀況很嚴重，就會嚴重的影響效率。就等待某活動完成工作此一用途而言，呼叫down()的後果幾乎總是等待，所以效能會受到嚴重損傷。
+可以使用completion讓一個執行緒可將完工消息告訴另一個執行緒
+*    等待完工通知的函式wait_for_completion()
+    *    wait_for_completion是一個不可中斷的，表示若程式呼叫了它，但是沒有人送出完工通知，結果將造成一個殺不死的process。
+*    送出完工通知的函式complete() / complete_all()
+
+### spinlock
+
+不同於semaphore/mutex，spinlock可用於==不得休眠的程式==，例如**interrupt_handlers**。
+
+任何時侯只要spinlock被lock，相關==處理器的preemption就立刻失效==，因此使用spinlock時，持有spinlock的程式必須是atomic，==不能休眠==。也就是無論任何理由都不能釋出處理器，但是任何涉及到配置記憶體的操作，都有可能休眠（ex: kmalloc())因此要特別注意critical section中所呼叫的函式。
+假設驅動程式順利的得到裝置的spinlock，因此可以對裝置進行存取，但是有可能在程式使用該裝置時觸發了也要使用該裝置的ISR，因此CPU會去執行ISR，但是ISR也需要spinlock才能對該裝置進行操作，但是沒有人可以去釋放proces所持有的spinloc，因此ISR得不到spinlock所以只好一直busy waiting，陷入==deadlock==。因此在持有spinlock的期間，會**暫時讓local CPU的interrupt 失效**。
+
+如果必須要同時取得spinlock和mutex/semaphore的話，==必須先取得mutex/semaphore，再去取得spinlock==，因為在持有spinlock的情況之下，喝叫down()有可能造成休眠。
+
+### 無鎖演算法
+**單一消費者-單一生產者**
+環狀暫存區（circular buffer)的資料結構，很適合用來應付無保護鎖的問題。網路卡驅動程式經常使用環狀暫存區來與處理器交換封包。
 
