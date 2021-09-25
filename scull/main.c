@@ -192,6 +192,104 @@ ssize_t scullc_write (struct file *filp, const char __user *buf, size_t count,
 }
 
 
+long scullc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
+    int err = 0, tmp;
+    int retval = 0;
+
+    if(_IOC_TYPE(cmd) != SCULL_IOC_MAGIC)
+        return -ENOTTY;
+    if(_IOC_NR(cmd) > SCULL_IOC_MAXNR)
+        return -ENOTTY;
+    if(_IOC_DIR(cmd) & _IOC_READ)
+        err = !access_ok(VERIFY_WRITE, (void __user*)arg, _IOC_SIZE(cmd));
+    else if(_IOC_DIR(cmd) & _IOC_WRITE)
+        err = !access_ok(VERIFY_READ, (void __user*)arg, _IOC_SIZE(cmd));
+    if(err)
+        return -EFAULT;
+    
+    switch(cmd) {
+
+	  case SCULL_IOCRESET:
+		scullc_quantum = SCULLC_QUANTUM;
+		scullc_qset = SCULLC_QSET;
+		break;
+        
+	  case SCULL_IOCSQUANTUM: /* Set: arg points to the value */
+		if (! capable (CAP_SYS_ADMIN))
+			return -EPERM;
+		retval = __get_user(scullc_quantum, (int __user *)arg);
+		break;
+
+	  case SCULL_IOCTQUANTUM: /* Tell: arg is the value */
+		if (! capable (CAP_SYS_ADMIN))
+			return -EPERM;
+		scullc_quantum = arg;
+		break;
+
+	  case SCULL_IOCGQUANTUM: /* Get: arg is pointer to result */
+		retval = __put_user(scullc_quantum, (int __user *)arg);
+		break;
+
+	  case SCULL_IOCQQUANTUM: /* Query: return it (it's positive) */
+		return scullc_quantum;
+
+	  case SCULL_IOCXQUANTUM: /* eXchange: use arg as pointer */
+		if (! capable (CAP_SYS_ADMIN))
+			return -EPERM;
+		tmp = scullc_quantum;
+		retval = __get_user(scullc_quantum, (int __user *)arg);
+		if (retval == 0)
+			retval = __put_user(tmp, (int __user *)arg);
+		break;
+
+	  case SCULL_IOCHQUANTUM: /* sHift: like Tell + Query */
+		if (! capable (CAP_SYS_ADMIN))
+			return -EPERM;
+		tmp = scullc_quantum;
+		scullc_quantum = arg;
+		return tmp;
+        
+	  case SCULL_IOCSQSET:
+		if (! capable (CAP_SYS_ADMIN))
+			return -EPERM;
+		retval = __get_user(scullc_qset, (int __user *)arg);
+		break;
+
+	  case SCULL_IOCTQSET:
+		if (! capable (CAP_SYS_ADMIN))
+			return -EPERM;
+		scullc_qset = arg;
+		break;
+
+	  case SCULL_IOCGQSET:
+		retval = __put_user(scullc_qset, (int __user *)arg);
+		break;
+
+	  case SCULL_IOCQQSET:
+		return scullc_qset;
+
+	  case SCULL_IOCXQSET:
+		if (! capable (CAP_SYS_ADMIN))
+			return -EPERM;
+		tmp = scullc_qset;
+		retval = __get_user(scullc_qset, (int __user *)arg);
+		if (retval == 0)
+			retval = put_user(tmp, (int __user *)arg);
+		break;
+
+	  case SCULL_IOCHQSET:
+		if (! capable (CAP_SYS_ADMIN))
+			return -EPERM;
+		tmp = scullc_qset;
+		scullc_qset = arg;
+		return tmp;
+      
+      default:
+        return -ENOTTY;
+    }
+    
+    return retval;
+}
 loff_t scullc_llseek (struct file *filp, loff_t off, int whence)
 {
 	struct scullc_dev *dev = filp->private_data;
